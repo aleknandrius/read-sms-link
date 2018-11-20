@@ -18,13 +18,13 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
                 }
                 if (messages.isNotEmpty() && messages[0]!!.messageBody.toLowerCase().contains("statymai.com")) {
                     Log.d("ALKN", "onReceive")
-                    val serviceIntent = Intent(context, MainActivity::class.java)
+                    val serviceIntent = Intent(context, SmsService::class.java)
                     val messageBody = messages[0]!!.messageBody
                     if (messageBody != null) {
                         val url = parseLink(messageBody)
                         if (url != null) {
                             serviceIntent.putExtra("url", messageBody)
-                            context.startActivity(serviceIntent)
+                            context.startService(serviceIntent)
                         }
                     }
                 }

@@ -1,124 +1,94 @@
 package com.example.andrius.smsreading
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import android.util.Log
-import java.util.regex.Pattern
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.creativityapps.gmailbackgroundlibrary.BackgroundMail
 import org.jsoup.Jsoup
-import org.jsoup.Connection
-import java.util.concurrent.Executors
-
+import java.util.*
 
 class SmsService : Service() {
 
+    private lateinit var webView: WebView
+    private var iface = JIFace()
+    var client: WebViewClient = MyClient()
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        onHandleIntent(intent);
+        onHandleIntent(intent)
         return super.onStartCommand(intent, flags, startId)
     }
 
-    // will be called asynchronously by Android
     private fun onHandleIntent(intent: Intent?) {
         if (intent != null) {
-            val message = intent.getStringExtra("message")
-            val url = parseLink(message)
+            val url = intent.getStringExtra("url")
             if (url != null) {
-                val executor = Executors.newSingleThreadExecutor()
-                executor.execute {
-                    //openPage("https://www.statymai.com/tipster/vamos--")
-                    val intent = Intent(this, MainActivity::class.java)
-                    intent.putExtra("url", url)
-                    startActivity(intent)
+                setUpWebView()
+                webView.loadUrl(url)
+            }
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun setUpWebView() {
+        val webSettings = webView.settings
+        webSettings.javaScriptEnabled = true
+        webView.webViewClient = client
+        webView.addJavascriptInterface(iface, "droid")
+    }
+
+    internal inner class MyClient : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            super.onPageFinished(view, url)
+            val ht = "javascript:window.droid.print(document.getElementsByTagName('html')[0].innerHTML);"
+            webView.loadUrl(ht)
+        }
+    }
+
+    internal inner class JIFace {
+        @JavascriptInterface
+        fun print(data: String) {
+            val doc = Jsoup.parse(data)
+            val elements = doc.getElementsByClass("bet")
+            if (elements.isNotEmpty()) {
+                val paidElement = elements.find { it.hasClass("paid") }
+                sendEmail(paidElement.toString())
+            }
+        }
+    }
+
+    private fun sendEmail(html: String) {
+        BackgroundMail.newBuilder(this)
+            .withUsername("@gmail.com")
+            .withPassword("")
+            .withSenderName("Statymai.com")
+            .withMailTo("@gmail.com")
+            .withMailCc("@gmail.com")
+            .withType(BackgroundMail.TYPE_HTML)
+            .withSubject("Statymai.com")
+            .withBody("Sms received: ${Date()} HTML:\n $html")
+            .withOnSuccessCallback(object : BackgroundMail.OnSendingCallback {
+                override fun onSuccess() {
+                    stopSelf()
                 }
-            }
-        }
+
+                override fun onFail(p0: Exception?) {
+                    p0?.printStackTrace()
+                    stopSelf()
+                }
+            })
+            .send()
     }
 
-    private fun openPage(url: String) {
-        val username = "Macke"
-        val password = "macke"
-
-        val cookies = HashMap<String, String>()
-        val formData = HashMap<String, String>()
-        val loginForm = Jsoup.connect(homeUrl)
-            .method(Connection.Method.GET)
-            .userAgent(System.getProperty("http.agent"))
-            .execute()
-
-        if (needLogin(loginForm.body())) {
-            cookies.putAll(loginForm.cookies())
-
-            formData.put("email_username", username);
-            formData.put("password", password);
-
-            val homePage = Jsoup.connect(loginUrl)
-                .cookies(cookies)
-                .data(formData)
-                .method(Connection.Method.POST)
-                .userAgent(System.getProperty("http.agent"))
-                .execute()
-            cookies.clear()
-            cookies.putAll(homePage.cookies())
-        }
-//        try {
-//            val sourceDoc = Jsoup.connect(url)
-//                .cookies(cookies)
-//                .method(Connection.Method.GET)
-//                .userAgent(System.getProperty("http.agent"))
-//                .execute()
-//            val html = sourceDoc.parse().html()
-//            Log.d("SMS", "html: " + html)
-//        } catch ( e: Exception){
-//            Log.e("SMS", "parsing", e)
-//        }
-
-        try {
-            val sourceDoc = Jsoup.connect("https://www.statymai.com/payment/list")
-                .cookies(cookies)
-                .method(Connection.Method.GET)
-                .userAgent(System.getProperty("http.agent"))
-                .execute()
-            val html = sourceDoc.parse().html()
-            Log.d("SMS", "html: " + html)
-        } catch ( e: Exception){
-            Log.e("SMS", "parsing", e)
-        }
-    }
-
-    private fun needLogin(html: String): Boolean {
-        return html.contains("icon-sign-in")
-    }
-
-    private fun parseLink(message: String): String? {
-        val splited = message.split("\\s+")
-        return splited.find { word ->
-            (word.contains("http") || word.contains("wwww")) && word.contains("statymai.com")
-        }
-        /*val links = mutableListOf<String>()
-
-        val regex = "\\(?\\b(http://|www|[.])[-A-Za-z0-9+&amp;@#/%?=~_()|!:,.;]*[-A-Za-z0-9+&amp;@#/%=~_()|]";
-        val p = Pattern.compile(regex);
-        val m = p.matcher(message);
-        while(m.find()) {
-            var urlStr = m.group()
-            if (urlStr.startsWith("(") && urlStr.endsWith(")"))
-            {
-                urlStr = urlStr.substring(1, urlStr.count() - 1);
-            }
-            links.add(urlStr);
-        }
-        return links.firstOrNull()*/
+    override fun onCreate() {
+        super.onCreate()
+        webView = WebView(this)
     }
 
     override fun onBind(intent: Intent): IBinder? {
-        // We don't provide binding, so return null
         return null
-    }
-
-    companion object {
-        private val userAgent = System.getProperty("http.agent")
-        private const val homeUrl = "https://statymai.com/?mobile=1"
-        private const val loginUrl = "https://statymai.com/login"
-
     }
 }

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Statymai.com sharing</string>
+    <string name="html"><![CDATA[Foo Bar <a href="foo?id=%s">baz</a> is cool]]></string>
 </resources>
